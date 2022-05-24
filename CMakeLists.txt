@@ -39,3 +39,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
+
+add_subdirectory(utils)
+add_subdirectory(curves)
+add_subdirectory(cli)
+add_subdirectory(random)
+
