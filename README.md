@@ -9,7 +9,6 @@ make
 ```
 ## Howto run:
 ```
-cd ./build
 ./random/randomCurves -n <number of curves>
 ```
   
