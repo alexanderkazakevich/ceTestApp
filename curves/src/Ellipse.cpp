@@ -35,3 +35,7 @@ void Ellipse::getPosition(std::vector<double>& positionOut) const
   positionOut[2] = 0.;
 }
 
+double Ellipse::getRaduis() const
+{
+  return m_rX;
+}

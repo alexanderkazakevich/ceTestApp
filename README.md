@@ -9,6 +9,6 @@ make
 ```
 ## Howto run:
 ```
-./random/randomCurves -n <number of curves>
+./bin/randomCurves -n <number of curves>
 ```
   

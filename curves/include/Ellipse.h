@@ -18,6 +18,7 @@ public:
   virtual void setParam(double tParamIn) override;
   virtual void getDerivative(std::vector<double>& derivativeOut) const override;
   virtual void getPosition(std::vector<double>& derivativeOut) const override;
+  virtual double getRaduis() const override;
 
 protected:
   double m_rX;

@@ -11,14 +11,18 @@
 #include "Helix.h"
 #include "Utils.h"
 
-/*
- * https://habr.com/ru/company/intel/blog/85273/
- */
+#include <chrono>
+#include <thread>
+
 
 static void printHelp(const char *argv)
 {
   printf("%s [OPTION]\n", argv);
   printf("\t[-h] Print help and exit.\n");
+  printf("\t[-s] Enable silent mode.\n");
+  printf("\t[-omp] Use OpenMP.\n");
+  printf("\t[-omp2] Use OpenMP with another order.\n");
+  printf("\t[-threads [num threads]] Separate calculation by threads.\n");
   printf("\t<-n> <number of curves>\n");
 };
 
@@ -45,12 +49,14 @@ static void fillArrayWithRandomCurves(
 }
 
 template <typename CurveType>
-static void printCurvesPosAndDerivative(std::vector<std::shared_ptr<CurveType>>& curves)
+static void printCurvesPosAndDerivative(
+    double param,
+    std::vector<std::shared_ptr<CurveType>>& curves)
 {
   std::vector<double> derivative;
   std::vector<double> position;
   for (auto& it: curves) {
-    it->setParam(M_PI_4);
+    it->setParam(param);
     it->getPosition(position);
     it->getDerivative(derivative);
 
@@ -86,7 +92,76 @@ static void sortCirclesByRadius(std::vector<std::shared_ptr<Circle>>& circles)
           return circleL->getRadii() <= circleR->getRadii();
        }
   );
+}
 
+static double sumRadiuses(const std::vector<std::shared_ptr<Circle>>& circles)
+{
+  double retSum = 0.;
+  int arraySize = circles.size();
+  for (int idx = 0; idx < arraySize; idx++) {
+    retSum += circles[idx]->getRaduis();
+  }
+  return retSum;
+}
+
+static double sumRadiusesOMP(const std::vector<std::shared_ptr<Circle>>& circles)
+{
+  double retSum = 0.;
+  double radius = 0.;
+  int arraySize = circles.size();
+#pragma omp parallel for shared(retSum)
+  for (int idx = 0; idx < arraySize; idx++) {
+    radius = circles[idx]->getRaduis();
+#pragma omp critical
+    retSum = retSum + radius;
+  }
+  return retSum;
+}
+
+static double sumRadiusesOMPv2(const std::vector<std::shared_ptr<Circle>>& circles)
+{
+  double retSum = 0.;
+  int arraySize = circles.size();
+  int itemSize = 4;
+#pragma omp parallel for shared(retSum)
+  for (int itemIdx = 0; itemIdx < itemSize; itemIdx++) {
+    double lSum = 0.;
+    for (int idx = itemIdx; idx < arraySize; idx+= itemSize) {
+      lSum += circles[idx]->getRaduis();
+    }
+#pragma omp critical
+    {
+      retSum += lSum;
+    }
+  }
+  return retSum;
+}
+
+static double sumRadiusesOnThreads(
+    const std::vector<std::shared_ptr<Circle>>& circles,
+    int threadsSize = 4)
+{
+  double retSum = 0.;
+  int arraySize = circles.size();
+  std::vector<std::shared_ptr<std::thread>> threads(threadsSize);
+  std::vector<double> lSums(threadsSize);
+  for (int threadIdx = 0; threadIdx < threadsSize; threadIdx++) {
+    threads[threadIdx] = std::make_shared<std::thread>(
+        [&circles, &threadsSize, &arraySize, threadIdx, &lSums]()
+        {
+          double lSum = 0.;
+          for (int idx = threadIdx; idx < arraySize; idx+= threadsSize) {
+            lSum += circles[idx]->getRaduis();
+          }
+          lSums[threadIdx] = lSum;
+        }
+    );
+  }
+  for (int threadIdx = 0; threadIdx < threadsSize; threadIdx++) {
+    threads[threadIdx]->join();
+    retSum += lSums[threadIdx];
+  }
+  return retSum;
 }
 
 int main (const int argc, const char** argv) {
@@ -99,6 +174,7 @@ int main (const int argc, const char** argv) {
   }
 
   int randomArraySize = 0;
+  int numThreads = 1;
 
   if (argParser.isArgOptionExists("-n") == false) {
     printf("\"-n\" <number of curves> is required\n");
@@ -113,13 +189,26 @@ int main (const int argc, const char** argv) {
     return EXIT_FAILURE;
   }
 
+  bool isSilent = argParser.isArgOptionExists("-s");
+  bool useOmp = argParser.isArgOptionExists("-omp");
+  bool useOmpV2 = argParser.isArgOptionExists("-omp2");
+  bool useThreads = argParser.isArgOptionExists("-threads");
+
+  if (useThreads) {
+    auto numThreadsStr = argParser.getArgOptionValue("-threads");
+    if (Utils::str2(numThreadsStr, numThreads) == false) {
+      numThreads = 4;
+    }
+  }
+
   std::vector<std::shared_ptr<Curve>> curves;
 
   fillArrayWithRandomCurves(curves, 100000., randomArraySize);
 
-  std::cout << "all curves:" << std::endl;
-
-  printCurvesPosAndDerivative(curves);
+  if (false == isSilent) {
+    std::cout << "all curves:" << std::endl;
+    printCurvesPosAndDerivative(M_PI_4, curves);
+  }
 
   std::vector<std::shared_ptr<Circle>> circles;
 
@@ -127,9 +216,38 @@ int main (const int argc, const char** argv) {
 
   sortCirclesByRadius(circles);
 
-  std::cout << "circles:" << std::endl;
+  if (false == isSilent) {
+    std::cout << "circles:" << std::endl;
+    printCurvesPosAndDerivative(M_PI_4, circles);
+  }
 
-  printCurvesPosAndDerivative(circles);
+  if (false == isSilent) {
+    std::cout << "circles with radiuses:" << std::endl;
+    printCurvesPosAndDerivative(0., circles);
+  }
+
+  double sumOfRadiuses;
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+
+  if (useThreads) {
+    sumOfRadiuses = sumRadiusesOnThreads(circles, numThreads);
+  } else if (useOmpV2) {
+    sumOfRadiuses = sumRadiusesOMPv2(circles);
+  } else if (useOmp) {
+    sumOfRadiuses = sumRadiusesOMP(circles);
+  } else {
+    sumOfRadiuses = sumRadiuses(circles);
+  }
+
+  auto t_end = std::chrono::high_resolution_clock::now();
+
+  auto timeDiff = std::chrono::duration<double, std::nano>(t_end-t_start).count();
+
+  timeDiff /= circles.size();
+  std::cout << "sum of Radiuses of circles: " << sumOfRadiuses << std::endl;
+  std::cout << "count of circles: " << circles.size() << std::endl;
+  std::cout << "time per circle: " << timeDiff << " ns" << std::endl;
 
   return EXIT_SUCCESS;
 }
