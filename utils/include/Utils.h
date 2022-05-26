@@ -24,8 +24,7 @@ public:
   static bool str2(std::string& inStr, OutType& outValue)
   {
     std::istringstream iss(inStr);
-    iss >> std::noskipws >> outValue; // noskipws considers leading whitespace invalid
-    // Check the entire string was consumed and if either failbit or badbit is set
+    iss >> std::noskipws >> outValue;
     return iss.eof() && !iss.fail();
   }
 
@@ -43,11 +42,6 @@ public:
           oss << *it;
           oss << ", ";
         }
-//        // Convert all but the last element to avoid a trailing ","
-//        std::copy(inVector.begin(), inVector.end()-1,
-//            std::ostream_iterator<InType>(oss, ", "));
-//
-//        // Now add the last element with no delimiter
         oss.width(widthArg);
         oss << inVector.back();
       }
